@@ -82,14 +82,22 @@ class DistributedAlgorithm(Community):
             starting_nodes:List[int] = [0],
             broadcast_num: int = 1,
             byzantine_num: int = 0,
+            is_byzantine: bool = False,
+            byzantine_behaviour: str = "ignore_msg",
             output_file: str = "output/node.out",
             stat_file: str = "output/node.yml",
     ) -> None:
         self.event = event
         self.node_id = node_id
+        self.log_file = open(file=f"output/node{self.node_id}.log", mode="w", encoding="utf-8")
+        self.log_file.write(f"TOTAL_TIME_SPENT, RECV_MSG, SENT_MSG, DELIVERED_MSG\n")
+        self.log_file.flush()
+
         self.starting_nodes = starting_nodes
         self.broadcast_num = broadcast_num
+        self.is_byzantine = is_byzantine
         self.f = byzantine_num
+        self.byzantine_behaviour = byzantine_behaviour
         self.algortihm_output_file = Path(output_file)
         self.algortihm_output_file = (
                 self.algortihm_output_file.parent

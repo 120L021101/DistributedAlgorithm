@@ -17,7 +17,8 @@ def load_algorithm(alg_name: str, location = 'cs4545'):
 
 
 async def start_communities(node_id, connections, algorithm, \
-            use_localhost=True, starting_nodes=[], broadcast_num=0, byzatine_num=0) -> None:
+            use_localhost=True, starting_nodes=[], broadcast_num=0, byzatine_num=0, \
+                is_byzantine=False, byzatine_behaviour = "ignore_msg") -> None:
     event = create_event_with_signals()
     base_port = 9090
     connections_updated = [(x, base_port + x) for x in connections]
@@ -39,7 +40,7 @@ async def start_communities(node_id, connections, algorithm, \
         [],
         {},
         [("started", node_id, connections_updated, event, \
-                use_localhost, starting_nodes, broadcast_num, byzatine_num)],
+                use_localhost, starting_nodes, broadcast_num, byzatine_num, is_byzantine, byzatine_behaviour)],
     )
     ipv8_instance = IPv8(
         builder.finalize(), extra_communities={"DA_Alg_Test": algorithm}
@@ -60,6 +61,7 @@ if __name__ == "__main__":
     parser.add_argument("broadcast_num", help="how many msg should this broadcaster send", type=int, default=0)
     parser.add_argument("is_byzantine", type=str, default="false")
     parser.add_argument("byzatine_num", help="aka f", type=int, default=0)
+    parser.add_argument("byzatine_behaviour", type=str, default="ignore_msg")
     parser.add_argument("topology", type=str, nargs="?", default="topologies/default.yaml")
     parser.add_argument("algorithm", type=str, nargs="?", default='echo')
     parser.add_argument("-location", type=str, default='cs4545')
@@ -79,4 +81,5 @@ if __name__ == "__main__":
         connections = topology[node_id]
 
         run(start_communities(node_id, connections, alg, not args.docker,\
-                               starting_nodes, args.broadcast_num, args.byzatine_num))
+                               starting_nodes, args.broadcast_num, \
+                                args.byzatine_num, is_byzantine, args.byzatine_behaviour))

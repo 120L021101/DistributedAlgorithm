@@ -4,7 +4,7 @@ python -m cs4545.system.util compose 10 topologies/dolev.yaml dolev
 
 export $NUM_NODES=10
 
-python -m cs4545.system.util compose_dolev 10 3 2 1
+python -m cs4545.system.util compose_dolev 4 1 1 1
 
 # # Exit if the above command fails
 # if [ $? -ne 0 ]; then
