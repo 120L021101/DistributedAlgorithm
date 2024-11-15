@@ -18,7 +18,8 @@ def load_algorithm(alg_name: str, location = 'cs4545'):
 
 async def start_communities(node_id, connections, algorithm, \
             use_localhost=True, starting_nodes=[], broadcast_num=0, byzatine_num=0, \
-                is_byzantine=False, byzatine_behaviour = "ignore_msg") -> None:
+                is_byzantine=False, byzatine_behaviour = "ignore_msg", \
+                    MD1=False, MD2=False, MD3=False, MD4=False, MD5=False) -> None:
     event = create_event_with_signals()
     base_port = 9090
     connections_updated = [(x, base_port + x) for x in connections]
@@ -40,7 +41,8 @@ async def start_communities(node_id, connections, algorithm, \
         [],
         {},
         [("started", node_id, connections_updated, event, \
-                use_localhost, starting_nodes, broadcast_num, byzatine_num, is_byzantine, byzatine_behaviour)],
+                use_localhost, starting_nodes, broadcast_num, byzatine_num, is_byzantine, byzatine_behaviour, \
+                        MD1, MD2, MD3, MD4, MD5)],
     )
     ipv8_instance = IPv8(
         builder.finalize(), extra_communities={"DA_Alg_Test": algorithm}
@@ -66,6 +68,11 @@ if __name__ == "__main__":
     parser.add_argument("algorithm", type=str, nargs="?", default='echo')
     parser.add_argument("-location", type=str, default='cs4545')
     parser.add_argument("-docker", action='store_true')
+    parser.add_argument("-MD1", action='store_true')
+    parser.add_argument("-MD2", action='store_true')
+    parser.add_argument("-MD3", action='store_true')
+    parser.add_argument("-MD4", action='store_true')
+    parser.add_argument("-MD5", action='store_true')
     args = parser.parse_args()
     node_id = args.node_id
     is_broadcaster = args.is_broadcaster == "true"
@@ -82,4 +89,5 @@ if __name__ == "__main__":
 
         run(start_communities(node_id, connections, alg, not args.docker,\
                                starting_nodes, args.broadcast_num, \
-                                args.byzatine_num, is_byzantine, args.byzatine_behaviour))
+                                args.byzatine_num, is_byzantine, args.byzatine_behaviour, \
+                                args.MD1, args.MD2, args.MD3, args.MD4, args.MD5))

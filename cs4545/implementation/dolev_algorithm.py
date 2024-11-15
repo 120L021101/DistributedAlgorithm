@@ -108,7 +108,6 @@ class DolevAlgorithm(DistributedAlgorithm):
     # upon event ⟨al, Deliver | pj , [m, path]⟩
     @message_wrapper(DolevMessage)
     async def al_deliver(self, peer: Peer, payload: DolevMessage) -> None:
-
         # if is byzantine node, act based on byzantine behaviour
         if self.is_byzantine:
             (behaviour, args) = {
@@ -125,7 +124,8 @@ class DolevAlgorithm(DistributedAlgorithm):
             
         pi = self.node_id
         pj, m, m_id, path, ori_id = payload.src_id, payload.message, payload.message_id, payload.path, payload.ori_id
-        
+
+
         # initialize variables if needed
         if m_id not in self.paths:
             self.paths[m_id] = set()
@@ -135,6 +135,7 @@ class DolevAlgorithm(DistributedAlgorithm):
                 f"msg_id: {m_id}, msg path: {self.formatPath(path)} " +
                                  f"and pi paths: {self.formatPaths(self.paths[m_id])}")
         self.interface_recv_msg_cnt += 1
+        
 
         try:
             path_to_send = path
@@ -143,16 +144,28 @@ class DolevAlgorithm(DistributedAlgorithm):
                 
             self.paths[m_id].add(path_to_send)
             
+            # MD1
+            print(self.MD1)
+            if not self.is_byzantine and self.MD1 and (pj == ori_id and not self.delivered[m_id]):
+                print(f"[Node {pi}] Delivered Message: [{m_id}]:{m}")
+                self.delivered[m_id] = True
+                self.protocol_delivered_msg_cnt += 1
             # byzantine node deliver doesn't count
             if not self.is_byzantine and not self.delivered[m_id] and self.criteria(self.paths[m_id]):
                 # Delivered
                 print(f"[Node {pi}] Delivered Message: [{m_id}]:{m}")
                 self.delivered[m_id] = True
                 self.protocol_delivered_msg_cnt += 1
-            # print(f"Paths after for loop: {self.paths[m_id]}")
 
             # do not send to occurred neighbors
             path_merged = path | (0x1 << ori_id) | (0x1 << pj)
+            
+            # # MD2 task1, send empty path, so path_to_send should be empty
+            # # MD2 task2, broadcast to all neighbors, so path_merged should be empty
+            # if self.MD2 and self.delivered[m_id]:
+            #     path_to_send = 0
+            #     path_merged = 0
+            
             pi_bit = 0x1 << pi
             for peer in self.get_peers():
                 pk = self.node_id_from_peer(peer=peer)

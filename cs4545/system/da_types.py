@@ -84,6 +84,11 @@ class DistributedAlgorithm(Community):
             byzantine_num: int = 0,
             is_byzantine: bool = False,
             byzantine_behaviour: str = "ignore_msg",
+            MD1: bool = False,
+            MD2: bool = False,
+            MD3: bool = False,
+            MD4: bool = False,
+            MD5: bool = False,
             output_file: str = "output/node.out",
             stat_file: str = "output/node.yml",
     ) -> None:
@@ -103,6 +108,13 @@ class DistributedAlgorithm(Community):
                 self.algortihm_output_file.parent
                 / f"{self.algortihm_output_file.stem}-{node_id}{self.algortihm_output_file.suffix}"
         )
+
+        self.MD1 = MD1
+        self.MD2 = MD2
+        self.MD3 = MD3
+        self.MD4 = MD4
+        self.MD5 = MD5
+
         self.stat_file = Path(stat_file)
         self.stat_file = self.stat_file.parent / f"{self.stat_file.stem}-{node_id}{self.stat_file.suffix}"
         connections = list(set(connections))
