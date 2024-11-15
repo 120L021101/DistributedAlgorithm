@@ -22,11 +22,12 @@ class DolevAlgorithm(DistributedAlgorithm):
     def formatPaths(paths):
         return '| '.join([
             '-'.join([str(i) for i, bit in enumerate(reversed(bin(path))) if bit == "1"])
+            if path != 0 else "empty"
                     for path in paths
         ])
     @staticmethod
     def formatPath(path):
-        return '-'.join([str(i) for i, bit in enumerate(reversed(bin(path))) if bit == "1"])
+        return '-'.join([str(i) for i, bit in enumerate(reversed(bin(path))) if bit == "1"]) if path != 0 else "empty"
 
     # upon event ⟨Dolev, Init⟩ 
     def __init__(self, settings: CommunitySettings) -> None:
@@ -89,6 +90,7 @@ class DolevAlgorithm(DistributedAlgorithm):
     
     def criteria(self, bit_paths: set) -> bool:
         # check if exists exactly f + 1 vertex disjoint paths
+        print(f"[Node {self.node_id}] check disjoint: {self.formatPaths(bit_paths)}")
         bit_paths = list(bit_paths)
         return self.__dfs_max_disjoint(0, [0 for _ in range(len(bit_paths))],
                                        bit_paths, 0) == self.f + 1
@@ -169,7 +171,8 @@ class DolevAlgorithm(DistributedAlgorithm):
             pi_bit = 0x1 << pi
             for peer in self.get_peers():
                 pk = self.node_id_from_peer(peer=peer)
-                if 0 != (pi_bit & path_merged):
+                pk_bit = 0x1 << pk
+                if 0 != (pk_bit & path_merged):
                     continue
                 print(f"[Node {self.node_id}] Send to {pk}")  
                 await self.send_with_delay(peer, DolevMessage(ori_id, pi, m, m_id, path_to_send))
