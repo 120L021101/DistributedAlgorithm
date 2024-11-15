@@ -17,7 +17,6 @@ class DolevAlgorithm(DistributedAlgorithm):
         DistributedAlgorithm (_type_): _description_
     """
 
-    """ 空路径啥也没有 """
     @staticmethod
     def formatPaths(paths):
         return '| '.join([
