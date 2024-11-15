@@ -4,8 +4,8 @@ from cs4545.system.da_types import *
 
 @dataclass(msg_id=4)  # The value 1 identifies this message and must be unique per community.
 class DolevMessage:
-    ori_id : int
-    src_id : int
+    source_id : int
+    sender_id : int
     message : str
     message_id : str
     path : int
@@ -108,7 +108,7 @@ class DolevAlgorithm(DistributedAlgorithm):
 
     # upon event ⟨al, Deliver | pj , [m, path]⟩
     @message_wrapper(DolevMessage)
-    async def al_deliver(self, peer: Peer, payload: DolevMessage) -> None:
+    async def al_deliver(self, neighbor: Peer, payload: DolevMessage) -> None:
         # if is byzantine node, act based on byzantine behaviour
         if self.is_byzantine:
             (behaviour, args) = {
@@ -123,8 +123,8 @@ class DolevAlgorithm(DistributedAlgorithm):
             if not if_continue:
                 return
             
-        pi = self.node_id
-        pj, m, m_id, path, ori_id = payload.src_id, payload.message, payload.message_id, payload.path, payload.ori_id
+        receiver_id = self.node_id
+        sender_id, m, m_id, received_path, source_id = payload.sender_id, payload.message, payload.message_id, payload.path, payload.source_id
 
 
         # initialize variables if needed
@@ -132,53 +132,53 @@ class DolevAlgorithm(DistributedAlgorithm):
             self.paths[m_id] = set()
         if m_id not in self.delivered:
             self.delivered[m_id] = False
-        print(f"[Node {pi}] Got a message {m} origin of {ori_id} with sender {pj}.\t" + 
-                f"msg_id: {m_id}, msg path: {self.formatPath(path)} " +
+        print(f"[Node {receiver_id}] Got a message {m} source of {source_id} with sender {sender_id}.\t" + 
+                f"msg_id: {m_id}, msg path: {self.formatPath(received_path)} " +
                                  f"and pi paths: {self.formatPaths(self.paths[m_id])}")
         self.interface_recv_msg_cnt += 1
         
 
         try:
-            path_to_send = path
-            if pj != ori_id:
-                path_to_send = path | (0x1 << pj)
+            updated_path = received_path
+            if sender_id != source_id:
+                updated_path = received_path | (0x1 << sender_id)
                 
-            self.paths[m_id].add(path_to_send)
+            self.paths[m_id].add(updated_path)
             
             # MD1
             print(self.MD1)
-            if not self.is_byzantine and self.MD1 and (pj == ori_id and not self.delivered[m_id]):
-                print(f"[Node {pi}] Delivered Message: [{m_id}]:{m}")
+            if not self.is_byzantine and self.MD1 and (sender_id == source_id and not self.delivered[m_id]):
+                print(f"[Node {receiver_id}] Delivered Message: [{m_id}]:{m}")
                 self.delivered[m_id] = True
                 self.protocol_delivered_msg_cnt += 1
             # byzantine node deliver doesn't count
             if not self.is_byzantine and not self.delivered[m_id] and self.criteria(self.paths[m_id]):
                 # Delivered
-                print(f"[Node {pi}] Delivered Message: [{m_id}]:{m}")
+                print(f"[Node {receiver_id}] Delivered Message: [{m_id}]:{m}")
                 self.delivered[m_id] = True
                 self.protocol_delivered_msg_cnt += 1
 
             # do not send to occurred neighbors
-            path_merged = path | (0x1 << ori_id) | (0x1 << pj)
+            merged_path = received_path | (0x1 << source_id) | (0x1 << sender_id)
             
-            # # MD2 task1, send empty path, so path_to_send should be empty
-            # # MD2 task2, broadcast to all neighbors, so path_merged should be empty
+            # # MD2 task1, send empty path, so updated_path should be empty
+            # # MD2 task2, broadcast to all neighbors, so merged_path should be empty
             # if self.MD2 and self.delivered[m_id]:
-            #     path_to_send = 0
-            #     path_merged = 0
+            #     updated_path = 0
+            #     merged_path = 0
             
-            pi_bit = 0x1 << pi
-            for peer in self.get_peers():
-                pk = self.node_id_from_peer(peer=peer)
-                pk_bit = 0x1 << pk
-                if 0 != (pk_bit & path_merged):
+            # pi_bit = 0x1 << receiver_id
+            for neighbor in self.get_peers():
+                neighbor_id = self.node_id_from_peer(peer=neighbor)
+                neighbor_bitmask = 0x1 << neighbor_id
+                if 0 != (neighbor_bitmask & merged_path):
                     continue
-                print(f"[Node {self.node_id}] Send to {pk}")  
-                await self.send_with_delay(peer, DolevMessage(ori_id, pi, m, m_id, path_to_send))
+                print(f"[Node {receiver_id}] Send to {neighbor_id}")  
+                await self.send_with_delay(neighbor, DolevMessage(source_id, receiver_id, m, m_id, updated_path))
                 self.interface_sent_msg_cnt += 1
 
         except Exception as e:
-            print(f"[Node {self.node_id}] Error in al_deliver: {e}")
+            print(f"[Node {receiver_id}] Error in al_deliver: {e}")
             raise e
 
         # log output to "output/node{node_id}.log"
