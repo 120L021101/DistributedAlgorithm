@@ -153,20 +153,23 @@ class DolevAlgorithm(DistributedAlgorithm):
             print(f"[Node {receiver_id}:{seq_id}] received a msg of a delivered msg, no futher processing")
             return
         
-        # MD3
-        if(self.MD3 and received_path == 0):
-            self.delivered_neighbors[m_id] = self.delivered_neighbors[m_id] | (0x1 << sender_id)
-            print(f"[Node {receiver_id}:{seq_id}] received msg with empty path, current delivered neighbors: {self.formatPath(self.delivered_neighbors[m_id])}")
-            
         # MD4
         if(self.MD4 and self.delivered_neighbors[m_id] & received_path != 0):
             print(f"[Node {receiver_id}:{seq_id}] received path contain neighbors that already delivered, no futher processing")
             return
         
+        # MD3
+        if(self.MD3 and received_path == 0):
+            sender_bitmask = 0b1 << sender_id
+            self.delivered_neighbors[m_id] = self.delivered_neighbors[m_id] | sender_bitmask
+            filtered_path = {path for path in self.paths[m_id] if (path & sender_bitmask == 0)}
+            self.paths[m_id] = filtered_path
+            print(f"[Node {receiver_id}:{seq_id}] received msg with empty path, current delivered neighbors: {self.formatPath(self.delivered_neighbors[m_id])}")
+        
         try:
             updated_path = received_path
             if sender_id != source_id:
-                updated_path = received_path | (0x1 << sender_id)
+                updated_path = received_path | (0b1 << sender_id)
                 
             self.paths[m_id].add(updated_path)     
                    
@@ -192,13 +195,13 @@ class DolevAlgorithm(DistributedAlgorithm):
             
             
             # do not send to occurred neighbors
-            no_sending_node = received_path | (0x1 << source_id) | (0x1 << sender_id)
+            no_sending_node = received_path | (0b1 << source_id) | (0b1 << sender_id)
             # MD3
             if(self.MD3): 
                 no_sending_node = no_sending_node | self.delivered_neighbors[m_id]
             for neighbor in self.get_peers():
                 neighbor_id = self.node_id_from_peer(peer=neighbor)
-                neighbor_bitmask = 0x1 << neighbor_id
+                neighbor_bitmask = 0b1 << neighbor_id
                 if 0 != (neighbor_bitmask & no_sending_node):
                     continue
                 print(f"[Node {receiver_id}:{seq_id}] Send msg {m_id} with path {self.formatPath(updated_path)} to {neighbor_id}")  

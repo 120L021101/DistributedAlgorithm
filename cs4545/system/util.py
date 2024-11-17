@@ -30,6 +30,35 @@ def compose(num_nodes, topology_file, algorithm, template_file):
     prepare_compose_file(num_nodes, topology_file, algorithm, template_file)
 
 
+def generate_2f_plus_1_connected_graph(num_nodes, f):
+    import networkx as nx
+    import matplotlib.pyplot as plt
+    k = 2 * f + 1  # Required degree and connectivity
+
+    # Ensure that the degree is less than the number of nodes
+    if k >= num_nodes:
+        raise ValueError("Number of nodes must be greater than 2f + 1.")
+
+    if k >= num_nodes // 2:
+        G = nx.complete_graph(num_nodes)
+        return { node: list(G.neighbors(node)) for node in G.nodes() }
+    else:
+        while True:
+            try:
+                # Try to generate a random k-regular graph
+                G = nx.random_regular_graph(k, num_nodes)
+            except nx.NetworkXError as e:
+                print(f"Error generating {k}-regular graph: {e}")
+            else:
+                # Check if the graph is (2f + 1)-connected
+                connectivity = nx.node_connectivity(G)
+                if connectivity >= k:
+                    print(f"Generated a {k}-connected random regular graph with {num_nodes} nodes.")
+                    connections = { node: list(G.neighbors(node)) for node in G.nodes() }
+                    return connections
+                else:
+                    print(f"Graph connectivity {connectivity} is less than required {k}, regenerating...")
+
 def prepare_compose_dolev_file(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num, topology_file, template_file):
     with open(template_file, 'r') as f:
         content = yaml.safe_load(f)
@@ -70,33 +99,9 @@ def prepare_compose_dolev_file(num_nodes, broadcaster_num, broadcast_num_per_nod
             n['environment']['LOCATION'] = "cs4545"
             nodes[f'node{i}'] = n
 
-        connections = {
-            i : [(i - 1) % num_nodes, (i + 1) % num_nodes] for i in range(num_nodes)
-        }  
-        degrees = [2 for _ in range(num_nodes)]
 
-        # keep generating until meets the requirement
-        while not all([degree == 2 * byzantine_num + 1 for degree in degrees]):
-            connections = {
-                i : [(i - 1) % num_nodes, (i + 1) % num_nodes] for i in range(num_nodes)
-            }  
-            degrees = [2 for _ in range(num_nodes)]
-            for i in range(num_nodes):
-                # first, ring topo, confirm connectivity
-                count = 0
-                while degrees[i] != 2 * byzantine_num + 1:
-                    j = random.randint(0, num_nodes - 1)
-                    if i == j: continue
-                    count += 1
-                    if count == 10 * num_nodes: break
-                    if degrees[j] == 2 * byzantine_num + 1:
-                        continue
-                    if j in connections[i]: continue
-                    degrees[i] += 1
-                    degrees[j] += 1
-                    connections[i].append(j)
-                    connections[j].append(i)
-            
+
+        connections = generate_2f_plus_1_connected_graph(num_nodes, byzantine_num)
 
         content['services'] = nodes
 
@@ -233,7 +238,7 @@ def eval(cfg_file: str, output_dir: str, verbose: bool = True, append_file: Opti
             f.write('\n')
 
 
-@cli.command()
+@cli.command("d")
 @click.argument('topology_file', type=str)
 def draw_topology(topology_file: str):
     with open(topology_file, 'r') as f:
@@ -249,7 +254,7 @@ def draw_topology(topology_file: str):
         plt.show()
 
 
-@cli.command()
+@cli.command("d2")
 @click.argument('topology_file', type=str)
 def draw_topology2(topology_file: str, yaml_file: str="docker-compose.yml"):
     with open(topology_file, 'r') as f:
