@@ -82,9 +82,11 @@ class DolevAlgorithm(DistributedAlgorithm):
                     if bit_paths[i] & bit_paths[j] != 0:
                         return max_val
             return max(max_val, sum(cur_picks))
+        cur_picks[idx] = 0
         max_val = self.__dfs_max_disjoint(idx + 1, cur_picks, bit_paths, max_val)
         cur_picks[idx] = 1
-        return self.__dfs_max_disjoint(idx + 1, cur_picks, bit_paths, max_val)
+        max_val = self.__dfs_max_disjoint(idx + 1, cur_picks, bit_paths, max_val)
+        return max_val
         
     
     def criteria(self, bit_paths: set) -> bool:
@@ -92,7 +94,7 @@ class DolevAlgorithm(DistributedAlgorithm):
         print(f"[Node {self.node_id}] check disjoint: {self.formatPaths(bit_paths)}")
         bit_paths = list(bit_paths)
         return self.__dfs_max_disjoint(0, [0 for _ in range(len(bit_paths))],
-                                       bit_paths, 0) == self.f + 1
+                                       bit_paths, 0) >= self.f + 1
     
     def ignore_msg(self, payload):
         # byzantine: ignore msg, do nothing
