@@ -116,10 +116,10 @@ class DolevAlgorithm(DistributedAlgorithm):
         return False 
     
     def modify_msg_id(self, payload):
-        # byzantine: increase origin id by 10
-        pj = payload.ori_id
-        payload.ori_id += 10
-        print(f"[Node {self.node_id}] modify {payload.message_id}'s m_id from {pj} to {payload.ori_id}")
+        # byzantine: increase source id by 10
+        pj = payload.source_id
+        payload.source_id += 10
+        print(f"[Node {self.node_id}] modify {payload.message_id}'s m_id from {pj} to {payload.source_id}")
         return True
 
     # upon event ⟨al, Deliver | pj , [m, path]⟩
