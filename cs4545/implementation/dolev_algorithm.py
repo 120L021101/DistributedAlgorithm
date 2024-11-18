@@ -35,12 +35,14 @@ class DolevAlgorithm(DistributedAlgorithm):
         super().__init__(settings)
 
         self.delivered = dict()
+        self.log_reason = dict()
         self.delivered_neighbors = dict()
         self.paths = dict()
         self.sent_msg_cnt = 0
         self.seq_id = 0
 
         # 方便测试，针对latency和msg复杂度
+        self.msg_cnt = dict()
         self.interface_recv_msg_cnt = 0
         self.interface_sent_msg_cnt = 0
         self.protocol_delivered_msg_cnt = 0
@@ -58,23 +60,28 @@ class DolevAlgorithm(DistributedAlgorithm):
         self.start_time = time.time()
         seq_id = self.seq_id
         seq_id += 1 
-        print(f"Node {self.node_id} is starting the Delov algorithm")
+        print(f"[Node {self.node_id}] is starting the Delov algorithm")
         if message is None:
             message = f"Hello From {self.node_id}"
         for i in range(self.broadcast_num):
             message_id = f"{self.node_id}:{self.sent_msg_cnt}"
+            self.msg_cnt[message_id] = {"recv":0,"sent":0}
             self.sent_msg_cnt += 1
             for peer in self.get_peers():
                 # broadcast to all neighbors  
                 peer_id = self.node_id_from_peer(peer=peer)
-                print(f"[Node {self.node_id}] Send to {peer_id}")  
-                await self.send_with_delay(peer, DolevMessage(self.node_id, self.node_id, message, message_id, 0))
+                print(f"[Node {self.node_id}] Broadcast to {peer_id}")  
+                await self.send_with_delay(peer, "", DolevMessage(self.node_id,self.node_id, message, message_id, 0))
                 self.interface_sent_msg_cnt += 1
+                self.msg_cnt[message_id]["sent"] += 1
 
             self.delivered[message_id] = True
             self.protocol_delivered_msg_cnt += 1
             # Delivered!
             print(f"[Node {self.node_id}] Delivered Message: [{message_id}]:{message}")
+            self.log_reason[message_id] = "As Source"
+            self.log_file.write(f"({message_id}, {self.log_reason[message_id]}, {time.time()-self.start_time}, {self.msg_cnt[message_id]['recv']}, {self.msg_cnt[message_id]['sent']}, {self.protocol_delivered_msg_cnt})\n")
+            self.log_file.flush()
     
     def __dfs_max_disjoint(self, idx, cur_picks, bit_paths, max_val) -> int:
         if idx == len(cur_picks):
@@ -118,6 +125,11 @@ class DolevAlgorithm(DistributedAlgorithm):
     # upon event ⟨al, Deliver | pj , [m, path]⟩
     @message_wrapper(DolevMessage)
     async def al_deliver(self, neighbor: Peer, payload: DolevMessage) -> None:
+        receiver_id = self.node_id
+        sender_id, m, m_id, received_path, source_id = payload.sender_id, payload.message, payload.message_id, payload.path, payload.source_id
+        seq_id = self.seq_id
+        self.seq_id += 1
+        
         # if is byzantine node, act based on byzantine behaviour
         if self.is_byzantine:
             (behaviour, args) = {
@@ -126,27 +138,31 @@ class DolevAlgorithm(DistributedAlgorithm):
                 # 修改消息的origin id，消息源
                 "MODIFY_MSG_ID": (self.modify_msg_id, (payload,)),
             }.get(self.byzantine_behaviour)
+            
+            # log
+            if m_id not in self.log_reason.keys():
+                self.log_reason[m_id] = "As Byzantine Node"
+                self.log_file.write(f"({m_id}, {self.log_reason[m_id]}, -, -, -, -)\n")
+                self.log_file.flush()
 
             # e.g. if ignore, return, if modify, continue
             if_continue = behaviour(*args)
             if not if_continue:
                 return
             
-        receiver_id = self.node_id
-        sender_id, m, m_id, received_path, source_id = payload.sender_id, payload.message, payload.message_id, payload.path, payload.source_id
-        seq_id = self.seq_id
-        self.seq_id += 1
-
         # initialize variables if needed
         if m_id not in self.paths:
             self.paths[m_id] = set()
         if m_id not in self.delivered:
             self.delivered[m_id] = False
+            self.log_reason[m_id] = ""
             self.delivered_neighbors[m_id] = 0
+            self.msg_cnt[m_id] = {"recv":0,"sent":0}
         print(f"[Node {receiver_id}:{seq_id}] Got a message {m} source of {source_id} with sender {sender_id}.\t" + 
                 f"msg_id: {m_id}, msg path: {self.formatPath(received_path)} " +
                                  f"and local paths: {self.formatPaths(self.paths[m_id])}")
         self.interface_recv_msg_cnt += 1
+        self.msg_cnt[m_id]["recv"] += 1
        
         # MD5
         if(self.MD5 and self.delivered[m_id]):
@@ -176,6 +192,7 @@ class DolevAlgorithm(DistributedAlgorithm):
             # MD1
             if not self.is_byzantine and self.MD1 and (sender_id == source_id and not self.delivered[m_id]):
                 print(f"[Node {receiver_id}:{seq_id}] sender = source, Delivered Message: [{m_id}]:{m}")
+                self.log_reason[m_id] = "Neighbor of Source"
                 self.delivered[m_id] = True
                 self.protocol_delivered_msg_cnt += 1
                 
@@ -183,6 +200,7 @@ class DolevAlgorithm(DistributedAlgorithm):
             if not self.is_byzantine and not self.delivered[m_id] and self.criteria(self.paths[m_id]):
                 # Delivered
                 print(f"[Node {receiver_id}:{seq_id}] meet f+1 disjoint criteria, Delivered Message: [{m_id}]:{m}")
+                self.log_reason[m_id] = "F+1 disjoint found"
                 self.delivered[m_id] = True
                 self.protocol_delivered_msg_cnt += 1
 
@@ -193,28 +211,31 @@ class DolevAlgorithm(DistributedAlgorithm):
                 updated_path = 0
                 self.paths[m_id] = set()
             
-            
             # do not send to occurred neighbors
             no_sending_node = received_path | (0b1 << source_id) | (0b1 << sender_id)
             # MD3
             if(self.MD3): 
                 no_sending_node = no_sending_node | self.delivered_neighbors[m_id]
+
             for neighbor in self.get_peers():
                 neighbor_id = self.node_id_from_peer(peer=neighbor)
                 neighbor_bitmask = 0b1 << neighbor_id
                 if 0 != (neighbor_bitmask & no_sending_node):
                     continue
-                print(f"[Node {receiver_id}:{seq_id}] Send msg {m_id} with path {self.formatPath(updated_path)} to {neighbor_id}")  
-                await self.send_with_delay(neighbor, DolevMessage(source_id, receiver_id, m, m_id, updated_path))
+                if(self.delivered[m_id] and updated_path != 0):
+                    print(f"[Node {receiver_id}:{seq_id}] msg {m_id} delivered, stop sending path {self.formatPath(updated_path)} to neighbors")
+                    break
+                output = f"[Node {receiver_id}:{seq_id}] Send msg {m_id} with path {self.formatPath(updated_path)} to {neighbor_id}"
+                await self.send_with_delay(neighbor, output, DolevMessage(source_id, receiver_id, m, m_id, updated_path))
                 self.interface_sent_msg_cnt += 1
+                self.msg_cnt[m_id]["sent"] += 1
 
         except Exception as e:
             print(f"[Node {receiver_id}:{seq_id}] Error in al_deliver: {e}")
             raise e
 
         # log output to "output/node{node_id}.log"
-        self.log()
+        if(self.log_reason[m_id] and self.delivered[m_id]):
+            self.log_file.write(f"({m_id}, {self.log_reason[m_id]}, {time.time()-self.start_time}, {self.msg_cnt[m_id]['recv']}, {self.msg_cnt[m_id]['sent']}, {self.protocol_delivered_msg_cnt})\n")
+            self.log_file.flush()
         
-    def log(self):
-        self.log_file.write(f"({time.time()-self.start_time}, {self.interface_recv_msg_cnt}, {self.interface_sent_msg_cnt}, {self.protocol_delivered_msg_cnt})\n")
-        self.log_file.flush()

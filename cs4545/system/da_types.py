@@ -95,7 +95,7 @@ class DistributedAlgorithm(Community):
         self.event = event
         self.node_id = node_id
         self.log_file = open(file=f"output/node{self.node_id}.log", mode="w", encoding="utf-8")
-        self.log_file.write(f"TOTAL_TIME_SPENT, RECV_MSG, SENT_MSG, DELIVERED_MSG\n")
+        self.log_file.write(f"MSG_ID, DELIEVER_REASON, TOTAL_TIME_SPENT, RECV_MSG, SENT_MSG, NUM_DELIVERED_MSG\n")
         self.log_file.flush()
 
         self.starting_nodes = starting_nodes
@@ -199,7 +199,9 @@ class DistributedAlgorithm(Community):
 
         self.register_anonymous_task("delayed_stop", delayed_stop, delay=delay)
 
-    async def send_with_delay(self, peer: Peer, *payloads: AnyPayload, **kwargs) -> None:
+    async def send_with_delay(self, peer: Peer, output: str, *payloads: AnyPayload, **kwargs) -> None:
+        if output:
+            print(output)
         sleep_time = random.uniform(0.1, 1.0)
         await asyncio.sleep(sleep_time)
         self.ez_send(peer, *payloads, **kwargs)

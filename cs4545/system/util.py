@@ -49,6 +49,8 @@ def generate_2f_plus_1_connected_graph(num_nodes, f):
                 G = nx.random_regular_graph(k, num_nodes)
             except nx.NetworkXError as e:
                 print(f"Error generating {k}-regular graph: {e}")
+                G = nx.complete_graph(num_nodes)
+                return { node: list(G.neighbors(node)) for node in G.nodes() }
             else:
                 # Check if the graph is (2f + 1)-connected
                 connectivity = nx.node_connectivity(G)
