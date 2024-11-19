@@ -16,10 +16,13 @@ def cli():
 @click.argument('broadcaster_num', type=int)
 @click.argument('broadcast_num_per_node', type=int)
 @click.argument('byzantine_num', type=int)
+@click.argument('vertex_degree', type=int)
 @click.argument('topology_file', type=str, default='topologies/dolev.yaml')
 @click.option('--template_file', type=str, default='docker-compose.template.yml')
-def compose_dolev(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num, topology_file, template_file):
-    prepare_compose_dolev_file(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num, topology_file, template_file)
+def compose_dolev(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num,\
+                        vertex_degree, topology_file, template_file):
+    prepare_compose_dolev_file(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num,\
+                               vertex_degree, topology_file, template_file)
 
 @cli.command('compose')
 @click.argument('num_nodes', type=int)
@@ -30,10 +33,10 @@ def compose(num_nodes, topology_file, algorithm, template_file):
     prepare_compose_file(num_nodes, topology_file, algorithm, template_file)
 
 
-def generate_2f_plus_1_connected_graph(num_nodes, f):
+def generate_connected_graph(num_nodes, vertex_degree):
     import networkx as nx
     import matplotlib.pyplot as plt
-    k = 2 * f + 1  # Required degree and connectivity
+    k = vertex_degree  # Required degree and connectivity
 
     # Ensure that the degree is less than the number of nodes
     if k >= num_nodes:
@@ -61,7 +64,11 @@ def generate_2f_plus_1_connected_graph(num_nodes, f):
                 else:
                     print(f"Graph connectivity {connectivity} is less than required {k}, regenerating...")
 
-def prepare_compose_dolev_file(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num, topology_file, template_file):
+def prepare_compose_dolev_file(num_nodes, \
+                               broadcaster_num, broadcast_num_per_node, \
+                                byzantine_num, \
+                                vertex_degree, \
+                                topology_file, template_file):
     with open(template_file, 'r') as f:
         content = yaml.safe_load(f)
 
@@ -101,9 +108,7 @@ def prepare_compose_dolev_file(num_nodes, broadcaster_num, broadcast_num_per_nod
             n['environment']['LOCATION'] = "cs4545"
             nodes[f'node{i}'] = n
 
-
-
-        connections = generate_2f_plus_1_connected_graph(num_nodes, byzantine_num)
+        connections = generate_connected_graph(num_nodes, vertex_degree)
 
         content['services'] = nodes
 
