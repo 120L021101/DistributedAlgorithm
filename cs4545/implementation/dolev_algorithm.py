@@ -1,6 +1,6 @@
 from typing import List
 from cs4545.system.da_types import *
-
+import networkx as nx
 
 @dataclass(msg_id=4)  # The value 1 identifies this message and must be unique per community.
 class DolevMessage:
@@ -8,7 +8,7 @@ class DolevMessage:
     sender_id : int
     message : str
     message_id : str
-    path : int
+    path : List[int]
 
 class DolevAlgorithm(DistributedAlgorithm):
     """_summary_
@@ -16,6 +16,14 @@ class DolevAlgorithm(DistributedAlgorithm):
     Args:
         DistributedAlgorithm (_type_): _description_
     """
+    
+    @staticmethod
+    def path_to_bitmask(path):
+        bitmask = 0
+        for node in path:
+            bitmask |= (1 << node)
+        return bitmask
+        
     @staticmethod
     def formatPath(path):
         nodes = [i for i in range(path.bit_length()) if (path >> i) & 1]
@@ -78,7 +86,7 @@ class DolevAlgorithm(DistributedAlgorithm):
                 # broadcast to all neighbors  
                 peer_id = self.node_id_from_peer(peer=peer)
                 print(f"[Node {self.node_id}] Broadcast to {peer_id}")  
-                await self.send_with_delay(peer, "", DolevMessage(self.node_id,self.node_id, message, message_id, 0))
+                await self.send_with_delay(peer, "", DolevMessage(self.node_id,self.node_id, message, message_id, []))
                 self.logger.sent_msg(message_id)
 
             self.delivered[message_id] = True
@@ -87,6 +95,122 @@ class DolevAlgorithm(DistributedAlgorithm):
             print(f"[Node {self.node_id}] Delivered Message: [{message_id}]:{message}")
             self.logger.log_delivery(message_id, "As Source")
             self.logger.write_log_to_output()
+    
+    def extract_disjoint_paths(self, flow_dict, source, sink):
+
+        disjoint_paths = []
+        visited_edges = set()  # Track edges that have been used
+
+        while True:
+            path = []
+            current_node = source
+            while current_node != sink:
+                # Merge `_in` and `_out` into the base node name
+                if type(current_node) == str:
+                    base_node = current_node.replace("_in", "").replace("_out", "")
+                else:
+                    base_node = current_node
+                if not path or path[-1] != base_node:  # Avoid duplicate nodes in the path
+                    path.append(base_node)
+
+                found_next = False
+                for neighbor, flow in flow_dict.get(current_node, {}).items():
+                    # Only follow forward edges with positive flow
+                    edge = (current_node, neighbor)
+                    if flow > 0 and edge not in visited_edges:
+                        visited_edges.add(edge)  # Mark edge as used
+                        flow_dict[current_node][neighbor] -= 1  # Reduce flow for this edge
+                        current_node = neighbor
+                        found_next = True
+                        break
+                if not found_next:  # No valid path from current_node
+                    return disjoint_paths
+            # Add the sink to the path
+            if type(sink) == str:
+                base_sink = sink.replace("_in", "").replace("_out", "")
+            else:
+                base_sink = sink
+            path.append(base_sink)
+            disjoint_paths.append(path)
+
+    def has_exact_f_plus_one_vertex_disjoint_paths(self, pathsets, source, sink):
+        """
+        Determines if there are exactly f + 1 vertex-disjoint paths between source and sink
+        using pathsets represented as bitmasks.
+
+        Parameters:
+            pathsets (list of int): Each bitmask represents a path. Only contains nodes between source and sink.
+            source (int): Source node.
+            sink (int): Sink node.
+            f (int): Fault tolerance level.
+
+        Returns:
+            bool: True if there are exactly f + 1 vertex-disjoint paths, False otherwise.
+        """    
+        print(f"[Node {self.node_id}] check disjoint: {pathsets}")
+        nodes_in_paths = set()
+        for path in pathsets:
+            nodes_in_paths.update(path)
+        
+        # Add source and sink explicitly (even if they're not in the pathsets)
+        nodes_in_paths.add(source)
+        nodes_in_paths.add(sink)
+        
+        
+        # Create a directed graph from the pathsets
+        flow_network = nx.DiGraph()
+        for nodes_in_path in pathsets:
+            for u, v in zip(nodes_in_path, nodes_in_path[1:]):  # Sequential pairs
+                if not flow_network.has_edge(u, v):
+                    flow_network.add_edge(u, v, capacity=1)
+        
+        # Connect source to the start of paths
+        for path in pathsets:
+            if path[0] != source:  # Ensure no duplicate edges
+                flow_network.add_edge(source, path[0], capacity=1)
+
+        # Connect end of paths to the sink
+        for path in pathsets:
+            if path[-1] != sink:  # Ensure no duplicate edges
+                flow_network.add_edge(path[-1], sink, capacity=1)
+        
+        # Node splitting for vertex capacity constraints
+        split_flow_network = nx.DiGraph()
+        for node in nodes_in_paths:
+            if node == source or node == sink:
+                continue
+            # Add in-node and out-node for each node
+            in_node = f"{node}_in"
+            out_node = f"{node}_out"
+            split_flow_network.add_node(in_node)
+            split_flow_network.add_node(out_node)
+            # Edge from in-node to out-node with capacity 1
+            split_flow_network.add_edge(in_node, out_node, capacity=1)
+        
+        # Add edges from the original graph to the split graph
+        for u, v in flow_network.edges():
+            # Handle source and sink separately
+            if u == source:
+                u_node = source
+            else:
+                u_node = f"{u}_out"
+            if v == sink:
+                v_node = sink
+            else:
+                v_node = f"{v}_in"
+            split_flow_network.add_edge(u_node, v_node, capacity=1)
+        
+        # Add source and sink nodes to the split graph
+        split_flow_network.add_node(source)
+        split_flow_network.add_node(sink)
+        
+        # Compute maximum flow
+        flow_value, flow_dict = nx.maximum_flow(split_flow_network, source, sink)
+    
+        disjoint_path = self.extract_disjoint_paths(flow_dict, source, sink)
+        
+        # Check if the maximum flow equals f + 1
+        return flow_value >= self.f + 1, disjoint_path
     
     def __dfs_max_disjoint(self, idx, cur_picks, bit_paths, max_val) -> int:
         if idx == len(cur_picks):
@@ -134,6 +258,7 @@ class DolevAlgorithm(DistributedAlgorithm):
     async def al_deliver(self, neighbor: Peer, payload: DolevMessage) -> None:
         receiver_id = self.node_id
         sender_id, m, m_id, received_path, source_id = payload.sender_id, payload.message, payload.message_id, payload.path, payload.source_id
+        received_path_bitmask = self.path_to_bitmask(received_path)
         seq_id = self.seq_id
         self.seq_id += 1
         
@@ -165,8 +290,8 @@ class DolevAlgorithm(DistributedAlgorithm):
             self.log_reason[m_id] = ""
             self.delivered_neighbors[m_id] = 0
         print(f"[Node {receiver_id}:{seq_id}] Got a message {m} source of {source_id} with sender {sender_id}.\t" + 
-                f"msg_id: {m_id}, msg path: {self.formatPath(received_path)} " +
-                                 f"and local paths: {self.formatPaths(self.paths[m_id])}")
+                f"msg_id: {m_id}, msg path: {received_path} " +
+                                 f"and local paths: {self.paths[m_id]}")
         self.logger.recv_msg(m_id)
        
         # MD5 ignore msg if node already delivered the msg
@@ -175,15 +300,15 @@ class DolevAlgorithm(DistributedAlgorithm):
             return
         
         # MD4 ignore msg with path that contain delivered neighbor
-        if(self.MD4 and self.delivered_neighbors[m_id] & received_path != 0):
+        if(self.MD4 and self.delivered_neighbors[m_id] & received_path_bitmask != 0):
             print(f"[Node {receiver_id}:{seq_id}] received path contain neighbors that already delivered, no futher processing")
             return
         
         # MD3 remove path from pathset that contain the sender how sent a empty path
-        if(self.MD3 and received_path == 0):
+        if(self.MD3 and received_path_bitmask == 0):
             sender_bitmask = 0b1 << sender_id
             self.delivered_neighbors[m_id] = self.delivered_neighbors[m_id] | sender_bitmask
-            filtered_path = {path for path in self.paths[m_id] if (path & sender_bitmask == 0)}
+            filtered_path = {path for path in self.paths[m_id] if (self.path_to_bitmask(path) & sender_bitmask == 0)}
             self.paths[m_id] = filtered_path
             print(f"[Node {receiver_id}:{seq_id}] received msg with empty path, current delivered neighbors: {self.formatPath(self.delivered_neighbors[m_id])}")
         
@@ -191,10 +316,10 @@ class DolevAlgorithm(DistributedAlgorithm):
             # calculation of the path(received path + sender)
             updated_path = received_path
             if sender_id != source_id:
-                updated_path = received_path | (0b1 << sender_id)
+                updated_path.append(sender_id)
                 
             # add path to pathset
-            self.paths[m_id].add(updated_path)
+            self.paths[m_id].add(tuple(updated_path))
                    
             # MD1 deliver the msg if source = sender
             if not self.is_byzantine and self.MD1 and (sender_id == source_id and not self.delivered[m_id]):
@@ -204,23 +329,30 @@ class DolevAlgorithm(DistributedAlgorithm):
                 
             # deliver the msg if f+1 disjoint path found
             
-            if not self.is_byzantine and not self.delivered[m_id] and self.criteria(self.paths[m_id]):
-                # Delivered
-                print(f"[Node {receiver_id}:{seq_id}] meet f+1 disjoint criteria, Delivered Message: [{m_id}]:{m}")
-                self.logger.log_delivery(m_id, "F+1 disjoint found", None)
-                self.delivered[m_id] = True
+            #criteria = self.criteria(self.paths[m_id])
+            #self.has_exact_f_plus_one_vertex_disjoint_paths(self.paths[m_id],source_id, receiver_id)
+            if not self.is_byzantine and not self.delivered[m_id]:
+                criteria, disjoint_path = self.has_exact_f_plus_one_vertex_disjoint_paths(self.paths[m_id],source_id, receiver_id)
+                if criteria:
+                    # Delivered
+                    print(f"[Node {receiver_id}:{seq_id}] meet f+1 disjoint criteria, Delivered Message: [{m_id}]:{m}")
+                    print(disjoint_path)
+                    self.logger.log_delivery(m_id, "F+1 disjoint found", disjoint_path)
+                    self.delivered[m_id] = True
 
             
             # MD2 if msg delivered, send empty path to neighbors and discard the pathset it was saving
             if self.MD2 and self.delivered[m_id]:
-                updated_path = 0
+                updated_path = []
                 self.paths[m_id] = set()
             
             # do not send to neighbors that is in the received_path or is source or sender
-            no_sending_node = received_path | (0b1 << source_id) | (0b1 << sender_id)
+            no_sending_node = received_path_bitmask | (0b1 << source_id) 
+            if not (len(received_path) != 0 and len(updated_path) == 0): # still send if receive not empty path and in sending empty path
+                no_sending_node |= (0b1 << sender_id)
             # MD3 do not send msg to neighbors that already delivered the msg
             if(self.MD3): 
-                no_sending_node = no_sending_node | self.delivered_neighbors[m_id]
+                no_sending_node |= self.delivered_neighbors[m_id]
 
             for neighbor in self.get_peers():
                 neighbor_id = self.node_id_from_peer(peer=neighbor)
@@ -228,10 +360,10 @@ class DolevAlgorithm(DistributedAlgorithm):
                 if 0 != (neighbor_bitmask & no_sending_node):
                     continue
                 # MD2 if msg delivered, stop discard msg with not empty path to neighbors
-                if(self.delivered[m_id] and updated_path != 0):
-                    print(f"[Node {receiver_id}:{seq_id}] msg {m_id} delivered, stop sending path {self.formatPath(updated_path)} to neighbors")
+                if(self.delivered[m_id] and len(updated_path) != 0):
+                    print(f"[Node {receiver_id}:{seq_id}] msg {m_id} delivered, stop sending path {updated_path} to neighbors")
                     break
-                output = f"[Node {receiver_id}:{seq_id}] Send msg {m_id} with path {self.formatPath(updated_path)} to {neighbor_id}"
+                output = f"[Node {receiver_id}:{seq_id}] Send msg {m_id} with path {updated_path} to {neighbor_id}"
                 await self.send_with_delay(neighbor, output, DolevMessage(source_id, receiver_id, m, m_id, updated_path))
                 self.logger.sent_msg(m_id)
 

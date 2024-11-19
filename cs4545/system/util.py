@@ -348,7 +348,6 @@ def draw_topology2(topology_file: str, yaml_file: str="docker-compose.yml"):
         is_byzantine = False
         for nodes in config['services'].values():
 
-            print(node, nodes['environment']['PID'])
             if int(node) == int(nodes['environment']['PID']):
                 is_broadcaster = nodes['environment']['IS_BROADCASTER']
                 is_byzantine = nodes['environment']['IS_BYZANTINE']
