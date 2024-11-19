@@ -128,7 +128,9 @@ class DolevAlgorithm(DistributedAlgorithm):
         # byzantine: increase source id by 10
         pj = payload.source_id
         payload.source_id += 10
-        print(f"[Node {self.node_id}] modify {payload.message_id}'s m_id from {pj} to {payload.source_id}")
+        print(f"[Node {self.node_id}] modify {payload.message_id}'s source_id from {pj} to {payload.source_id}")
+        payload.message_id = f"{payload.source_id}" + ":" + payload.message_id.split(":")[1]
+        print(f"[Node {payload.source_id}] modify message id to {payload.message_id}")
         return True
 
     # upon event ⟨al, Deliver | pj , [m, path]⟩
