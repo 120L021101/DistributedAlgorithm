@@ -5,11 +5,74 @@ from typing import Optional
 
 import click
 import yaml
+import os
 
 
 @click.group()
 def cli():
     pass
+
+@cli.command('report')
+@click.argument('num_nodes', type=int)
+@click.argument('num_msg', type=int)
+@click.argument('output_folder', type=str, default='output')
+def report(num_nodes,num_msg,output_folder):
+    total_sent_msg_count = 0
+    delivered_times = []
+    all_node_delivered = True
+    
+    headers = ["Node ID", "All Delivered", "Delivered Count", "Meg Send Count", "Time Spent"]
+    col_widths = [10, 18, 18, 15, 15]
+    header_line = "".join(f"{header:<{width}}" for header, width in zip(headers, col_widths))
+    print(header_line)
+    print("=" * sum(col_widths))
+
+    # Loop through the range of file indices based on n
+    for i in range(num_nodes):
+        file_name = f"node-{i}.yml"
+        file_path = os.path.join(output_folder, file_name)
+        
+        # Check if the file exists
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as file:
+                data = yaml.safe_load(file)
+                
+                is_byzantine = data.get("is_byzantine", False)
+                
+                # Extract the records
+                records = data.get("records", {})
+                
+                # Find the last delivered time if all records are delivered
+                last_delivered_time = max(
+                    (record.get("time_spent", 0) for record in records.values() if record.get("time_spent") is not None),
+                    default=0
+                )
+                delivered_times.append(last_delivered_time)
+
+                
+                # Extract relevant data
+                node_sent_msg_count = data.get("total_sent_msg_count", 0)
+                node_delivered_msg = data.get("total_delivered_msg", 0)
+                total_sent_msg_count += node_sent_msg_count
+                
+                all_delivered = num_msg == node_delivered_msg
+                
+                if(not is_byzantine and not all_delivered):
+                    all_node_delivered = False
+                
+                node_simple = str(i) + ("*" if is_byzantine else "")
+                print(
+                    f"{node_simple:<10}"  # Msg ID
+                    f"{str(all_delivered):<18}"  # Delivered
+                    f"{node_delivered_msg:<18}"  # Recv Count
+                    f"{node_sent_msg_count:<15}"  # Send Count
+                    f"{last_delivered_time:<15.4f}"  # Time Spent
+                )
+        else:
+            print(f"File {file_name} not found. Skipping.")
+        
+    print("\n")
+    print(f"All good = [{all_node_delivered}], Total msg sent: {total_sent_msg_count}, Last Delivered Time: {max(delivered_times)}")
 
 @cli.command('compose_dolev')
 @click.argument('num_nodes', type=int)

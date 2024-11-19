@@ -20,6 +20,7 @@ from ipv8.messaging.serialization import Payload
 from ipv8.types import Peer, LazyWrappedHandler, MessageHandlerFunction
 
 from cs4545.system.msg_history import MessageHistory
+from cs4545.system.msg_logger import Logger
 
 
 def sizeof(obj):
@@ -117,6 +118,7 @@ class DistributedAlgorithm(Community):
 
         self.stat_file = Path(stat_file)
         self.stat_file = self.stat_file.parent / f"{self.stat_file.stem}-{node_id}{self.stat_file.suffix}"
+        self.logger = Logger(self.stat_file,node_id,is_byzantine=is_byzantine,byzantine_behaviour=byzantine_behaviour)
         connections = list(set(connections))
         self.connections = connections
         self.connectionLock = Lock()
