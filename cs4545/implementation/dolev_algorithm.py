@@ -28,7 +28,6 @@ class DolevAlgorithm(DistributedAlgorithm):
             for path in paths
         ]) + ']'
 
-
     # upon event ⟨Dolev, Init⟩ 
     def __init__(self, settings: CommunitySettings) -> None:
         # node_id, neighbors etc, all in this "settings"
@@ -57,6 +56,14 @@ class DolevAlgorithm(DistributedAlgorithm):
     # upon event ⟨Dolev, Broadcast | m⟩
     # only starter does "Broadcast"
     async def on_start_as_starter(self, message=None):
+        
+        # 如果是malicious broadcaster，只广播f个邻居，否则有多少广播多少
+        broadcast_neighbor_upper_bound = None
+        if self.is_byzantine:
+            broadcast_neighbor_upper_bound = self.f
+        else:
+            broadcast_neighbor_upper_bound = len(self.get_peers())
+
         self.start_time = time.time()
         seq_id = self.seq_id
         seq_id += 1 
@@ -67,7 +74,9 @@ class DolevAlgorithm(DistributedAlgorithm):
             message_id = f"{self.node_id}:{self.sent_msg_cnt}"
             self.msg_cnt[message_id] = {"recv":0,"sent":0}
             self.sent_msg_cnt += 1
-            for peer in self.get_peers():
+            for n_id, peer in enumerate(self.get_peers()):
+                if n_id == broadcast_neighbor_upper_bound:
+                    break
                 # broadcast to all neighbors  
                 peer_id = self.node_id_from_peer(peer=peer)
                 print(f"[Node {self.node_id}] Broadcast to {peer_id}")  
@@ -130,15 +139,18 @@ class DolevAlgorithm(DistributedAlgorithm):
         seq_id = self.seq_id
         self.seq_id += 1
         
-        # if is byzantine node, act based on byzantine behaviour
-        if self.is_byzantine:
+        # if is non broadcaster byzantine node, act based on byzantine behaviour
+        if self.is_byzantine and (self.node_id not in self.starting_nodes):
             (behaviour, args) = {
                 # 忽略消息
                 "IGNORE_MSG": (self.ignore_msg, (payload, )),
                 # 修改消息的origin id，消息源
                 "MODIFY_MSG_ID": (self.modify_msg_id, (payload,)),
-            }.get(self.byzantine_behaviour)
-            
+            }.get(self.byzantine_behaviour, (None, None))
+
+            if behaviour is None:
+                return
+
             # log
             if m_id not in self.log_reason.keys():
                 self.log_reason[m_id] = "As Byzantine Node"
