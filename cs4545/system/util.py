@@ -20,9 +20,10 @@ def report(num_nodes,num_msg,output_folder):
     total_sent_msg_count = 0
     delivered_times = []
     all_node_delivered = True
+    average_deliver_time_list = []
     
-    headers = ["Node ID", "All Delivered", "Delivered Count", "Meg Send Count", "Time Spent"]
-    col_widths = [10, 18, 18, 15, 15]
+    headers = ["Node ID", "All Delivered", "Delivered Count", "Meg Send Count", "Time Spent", "Avg Time"]
+    col_widths = [10, 18, 18, 18, 18, 18]
     header_line = "".join(f"{header:<{width}}" for header, width in zip(headers, col_widths))
     print(header_line)
     print("=" * sum(col_widths))
@@ -43,11 +44,13 @@ def report(num_nodes,num_msg,output_folder):
                 records = data.get("records", {})
                 
                 # Find the last delivered time if all records are delivered
-                last_delivered_time = max(
-                    (record.get("time_spent", 0) for record in records.values() if record.get("time_spent") is not None),
-                    default=0
-                )
+                time_list = [record.get("time_spent", 0) for record in records.values() if record.get("time_spent") is not None]
+                last_delivered_time = max(time_list,default=0)
+                average_deliver_time = sum(time_list)/len(time_list)  if time_list else 0
                 delivered_times.append(last_delivered_time)
+                
+                if not is_byzantine:
+                    average_deliver_time_list.append(average_deliver_time)
 
                 
                 # Extract relevant data
@@ -65,14 +68,16 @@ def report(num_nodes,num_msg,output_folder):
                     f"{node_simple:<10}"  # Msg ID
                     f"{str(all_delivered):<18}"  # Delivered
                     f"{node_delivered_msg:<18}"  # Recv Count
-                    f"{node_sent_msg_count:<15}"  # Send Count
-                    f"{last_delivered_time:<15.4f}"  # Time Spent
+                    f"{node_sent_msg_count:<18}"  # Send Count
+                    f"{last_delivered_time:<18.4f}"  # Time Spent
+                    f"{average_deliver_time:<18.4f}"  # Time Spent
                 )
         else:
             print(f"File {file_name} not found. Skipping.")
         
+    overal_avg_time = sum(average_deliver_time_list) / len(average_deliver_time_list)
     print("\n")
-    print(f"All good = [{all_node_delivered}], Total msg sent: {total_sent_msg_count}, Last Delivered Time: {max(delivered_times)}")
+    print(f"All good = [{all_node_delivered}], Total msg sent: {total_sent_msg_count}, Last Delivered Time: {max(delivered_times)}, AVG Time: {overal_avg_time}")
 
 @cli.command('compose_dolev')
 @click.argument('num_nodes', type=int)
