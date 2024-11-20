@@ -110,9 +110,9 @@ def generate_connected_graph(num_nodes, vertex_degree):
     if k >= num_nodes:
         raise ValueError("Number of nodes must be greater than 2f + 1.")
 
-    if k >= num_nodes // 2:
-        G = nx.complete_graph(num_nodes)
-        return { node: list(G.neighbors(node)) for node in G.nodes() }
+    #if k >= num_nodes // 2:
+    #    G = nx.complete_graph(num_nodes)
+    #    return { node: list(G.neighbors(node)) for node in G.nodes() }
     else:
         while True:
             try:
