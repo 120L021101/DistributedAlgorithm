@@ -169,7 +169,8 @@ def prepare_compose_dolev_file(num_nodes, \
             if flag_byzantine: rem_byzantine_num -= 1
             n['environment']['IS_BYZANTINE'] = flag_byzantine
             n['environment']['BYZANTINE_NUM'] = byzantine_num
-            n['environment']['BYZANTINE_BEHAVIOUR'] = "IGNORE_MSG"
+            import random
+            n['environment']['BYZANTINE_BEHAVIOUR'] = "IGNORE_MSG" if random.randint(0, 1) == 1 else "MODIFY_MSG_ID"
 
             n['environment']['TOPOLOGY'] = topology_file
             n['environment']['ALGORITHM'] = "dolev"
