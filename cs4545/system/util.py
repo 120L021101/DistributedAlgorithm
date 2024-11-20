@@ -85,12 +85,13 @@ def report(num_nodes,num_msg,output_folder):
 @click.argument('broadcast_num_per_node', type=int)
 @click.argument('byzantine_num', type=int)
 @click.argument('vertex_degree', type=int)
+@click.argument('byzantine_behaviour', type=str, default='IGNORE_MSG')
 @click.argument('topology_file', type=str, default='topologies/dolev.yaml')
 @click.option('--template_file', type=str, default='docker-compose.template.yml')
 def compose_dolev(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num,\
-                        vertex_degree, topology_file, template_file):
+                        vertex_degree, byzantine_behaviour, topology_file, template_file):
     prepare_compose_dolev_file(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num,\
-                               vertex_degree, topology_file, template_file)
+                               vertex_degree, byzantine_behaviour, topology_file, template_file)
 
 @cli.command('compose')
 @click.argument('num_nodes', type=int)
@@ -136,6 +137,7 @@ def prepare_compose_dolev_file(num_nodes, \
                                broadcaster_num, broadcast_num_per_node, \
                                 byzantine_num, \
                                 vertex_degree, \
+                                byzantine_behaviour, \
                                 topology_file, template_file):
     with open(template_file, 'r') as f:
         content = yaml.safe_load(f)
@@ -169,7 +171,7 @@ def prepare_compose_dolev_file(num_nodes, \
             if flag_byzantine: rem_byzantine_num -= 1
             n['environment']['IS_BYZANTINE'] = flag_byzantine
             n['environment']['BYZANTINE_NUM'] = byzantine_num
-            n['environment']['BYZANTINE_BEHAVIOUR'] = "IGNORE_MSG"
+            n['environment']['BYZANTINE_BEHAVIOUR'] = byzantine_behaviour
 
             n['environment']['TOPOLOGY'] = topology_file
             n['environment']['ALGORITHM'] = "dolev"

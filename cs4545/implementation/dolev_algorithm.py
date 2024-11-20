@@ -47,7 +47,8 @@ class DolevAlgorithm(DistributedAlgorithm):
         self.paths = dict()
         self.sent_msg_cnt = 0
         self.seq_id = 0
-
+        self.byzantined_msg_id = []
+        
         # 方便测试，针对latency和msg复杂度
         self.interface_recv_msg_cnt = 0
         self.interface_sent_msg_cnt = 0
@@ -244,24 +245,36 @@ class DolevAlgorithm(DistributedAlgorithm):
         print(f"[Node {self.node_id}] ignores {payload.message_id} : {payload.message}")
         return False 
     
-    def modify_msg_id(self, payload):
+    async def modify_msg_id(self, payload):
         # byzantine: increase source id by 10
+        if(len(self.byzantined_msg_id) >= 2 or payload.message_id in self.byzantined_msg_id):
+            return False
+        self.byzantined_msg_id.append(payload.message_id)
         pj = payload.source_id
-        payload.source_id += 10
+        payload.source_id = self.get_modify_source_id(pj, self.node_id)
         print(f"[Node {self.node_id}] modify {payload.message_id}'s source_id from {pj} to {payload.source_id}")
         payload.message_id = f"{payload.source_id}" + ":" + payload.message_id.split(":")[1]
         print(f"[Node {payload.source_id}] modify message id to {payload.message_id}")
-        return True
+        
+        for neighbor in self.get_peers():
+            neighbor_id = self.node_id_from_peer(peer=neighbor)
+            print(f"[Node {self.node_id}] send fake msg {payload.message_id} to {neighbor_id}")
+            await self.send_with_delay(neighbor, "", DolevMessage(payload.source_id, self.node_id, payload.message, payload.message_id, payload.path))
+            self.logger.sent_msg(payload.message_id)
+        return False
+    
+    def get_modify_source_id(self, source_id, node_id):
+        while True:
+            if source_id != 0:
+                source_id -= 1
+            else:
+                source_id += 1
+            if(source_id != node_id):
+                return source_id
 
     # upon event ⟨al, Deliver | pj , [m, path]⟩
     @message_wrapper(DolevMessage)
     async def al_deliver(self, neighbor: Peer, payload: DolevMessage) -> None:
-        receiver_id = self.node_id
-        sender_id, m, m_id, received_path, source_id = payload.sender_id, payload.message, payload.message_id, payload.path, payload.source_id
-        received_path_bitmask = self.path_to_bitmask(received_path)
-        seq_id = self.seq_id
-        self.seq_id += 1
-        
         # if is non broadcaster byzantine node, act based on byzantine behaviour
         if self.is_byzantine and (self.node_id not in self.starting_nodes):
             (behaviour, args) = {
@@ -278,9 +291,19 @@ class DolevAlgorithm(DistributedAlgorithm):
             self.logger.write_log_to_output()
 
             # e.g. if ignore, return, if modify, continue
-            if_continue = behaviour(*args)
+            if self.byzantine_behaviour == "IGNORE_MSG":
+                if_continue = behaviour(*args)
+            elif self.byzantine_behaviour == "MODIFY_MSG_ID":
+                if_continue = await behaviour(*args)
             if not if_continue:
                 return
+            
+        receiver_id = self.node_id
+        sender_id, m, m_id, received_path, source_id = payload.sender_id, payload.message, payload.message_id, payload.path, payload.source_id
+        received_path_bitmask = self.path_to_bitmask(received_path)
+        seq_id = self.seq_id
+        self.seq_id += 1
+        
             
         # initialize variables if needed
         if m_id not in self.paths:
@@ -293,6 +316,11 @@ class DolevAlgorithm(DistributedAlgorithm):
                 f"msg_id: {m_id}, msg path: {received_path} " +
                                  f"and local paths: {self.paths[m_id]}")
         self.logger.recv_msg(m_id)
+        
+        # if got msg with self as source, ignore msg
+        if(source_id == receiver_id):
+            print(f"[Node {receiver_id}:{seq_id}] received a msg claim that was sent by node it self")
+            return
        
         # MD5 ignore msg if node already delivered the msg
         if(self.MD5 and self.delivered[m_id]):
