@@ -16,4 +16,4 @@ RUN pip install -r requirements.txt
 # COPY src /home/python/src
 COPY cs4545 /home/python/cs4545
 COPY topologies /home/python/topologies
-CMD python -u -m cs4545.system.run_dolev -MD1 -MD2 -MD3 -MD4 -MD5 $PID $IS_BROADCASTER $BROADCAST_NUM $IS_BYZANTINE $BYZANTINE_NUM $BYZANTINE_BEHAVIOUR $TOPOLOGY $ALGORITHM -location=$LOCATION -docker
+CMD python -u -m cs4545.system.run_bracha -MD1 -MD2 -MD3 -MD4 -MD5 $PID $IS_BROADCASTER $BROADCAST_NUM $IS_BYZANTINE $BYZANTINE_NUM $NODES_NUM $BYZANTINE_BEHAVIOUR $TOPOLOGY $ALGORITHM -location=$LOCATION -docker

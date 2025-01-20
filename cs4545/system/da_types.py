@@ -83,6 +83,7 @@ class DistributedAlgorithm(Community):
             starting_nodes:List[int] = [0],
             broadcast_num: int = 1,
             byzantine_num: int = 0,
+            nodes_num: int = 10,
             is_byzantine: bool = False,
             byzantine_behaviour: str = "ignore_msg",
             MD1: bool = False,
@@ -103,6 +104,7 @@ class DistributedAlgorithm(Community):
         self.broadcast_num = broadcast_num
         self.is_byzantine = is_byzantine
         self.f = byzantine_num
+        self.N = nodes_num
         self.byzantine_behaviour = byzantine_behaviour
         self.algortihm_output_file = Path(output_file)
         self.algortihm_output_file = (
@@ -202,8 +204,8 @@ class DistributedAlgorithm(Community):
         self.register_anonymous_task("delayed_stop", delayed_stop, delay=delay)
 
     async def send_with_delay(self, peer: Peer, output: str, *payloads: AnyPayload, **kwargs) -> None:
-        if output:
-            print(output)
+        if output and self.out_dolev is not None:
+            print(output, file=self.out_dolev)
         sleep_time = random.uniform(0.1, 1.0)
         await asyncio.sleep(sleep_time)
         self.ez_send(peer, *payloads, **kwargs)

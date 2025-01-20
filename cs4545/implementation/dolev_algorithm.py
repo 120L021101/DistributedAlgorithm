@@ -1,6 +1,7 @@
 from typing import List
 from cs4545.system.da_types import *
 import networkx as nx
+import os
 
 @dataclass(msg_id=4)  # The value 1 identifies this message and must be unique per community.
 class DolevMessage:
@@ -54,6 +55,8 @@ class DolevAlgorithm(DistributedAlgorithm):
         self.interface_sent_msg_cnt = 0
         self.protocol_delivered_msg_cnt = 0
 
+        self.out_dolev = open(os.devnull, mode='w', encoding='utf-8')
+        
         self.add_message_handler(DolevMessage, self.al_deliver)
 
     async def on_start(self):
@@ -61,41 +64,42 @@ class DolevAlgorithm(DistributedAlgorithm):
         self.start_time = time.time()
         await super().on_start()
     
-    # upon event ⟨Dolev, Broadcast | m⟩
-    # only starter does "Broadcast"
-    async def on_start_as_starter(self, message=None):
-        
+    async def dolev_broadcast(self, message=None):
         # 如果是malicious broadcaster，只广播f个邻居，否则有多少广播多少
-        broadcast_neighbor_upper_bound = None
-        if self.is_byzantine:
-            broadcast_neighbor_upper_bound = self.f
-        else:
-            broadcast_neighbor_upper_bound = len(self.get_peers())
+        broadcast_neighbor_upper_bound = self.f if self.is_byzantine else len(self.get_peers())
 
         self.start_time = time.time()
         seq_id = self.seq_id
-        seq_id += 1 
-        print(f"[Node {self.node_id}] is starting the Delov algorithm")
+        self.seq_id += 1 
         if message is None:
             message = f"Hello From {self.node_id}"
         for i in range(self.broadcast_num):
-            message_id = f"{self.node_id}:{self.sent_msg_cnt}"
+            message_id = f"{self.node_id}:{seq_id}"
             self.sent_msg_cnt += 1
+            sent_payload = DolevMessage(self.node_id,self.node_id, message, message_id, [])
             for n_id, peer in enumerate(self.get_peers()):
                 if n_id == broadcast_neighbor_upper_bound:
                     break
                 # broadcast to all neighbors  
                 peer_id = self.node_id_from_peer(peer=peer)
-                print(f"[Node {self.node_id}] Broadcast to {peer_id}")  
-                await self.send_with_delay(peer, "", DolevMessage(self.node_id,self.node_id, message, message_id, []))
+                print(f"[Node {self.node_id}] Broadcast to {peer_id}", file=self.out_dolev)  
+                await self.send_with_delay(peer, "", sent_payload)
                 self.logger.sent_msg(message_id)
 
             self.delivered[message_id] = True
             self.protocol_delivered_msg_cnt += 1
             # Delivered!
-            print(f"[Node {self.node_id}] Delivered Message: [{message_id}]:{message}")
+            await self.dolev_deliver(sent_payload)
+            print(f"[Node {self.node_id}] Delivered Message: [{message_id}]:{message}", file=self.out_dolev)
             self.logger.log_delivery(message_id, "As Source")
             self.logger.write_log_to_output()
+
+    # upon event ⟨Dolev, Broadcast | m⟩
+    # only starter does "Broadcast"
+    async def on_start_as_starter(self, message=None):
+        print(f"[Node {self.node_id}] is starting the Delov algorithm", file=self.out_dolev)
+        await self.dolev_broadcast(message=message)
+        
     
     def extract_disjoint_paths(self, flow_dict, source, sink):
 
@@ -148,7 +152,7 @@ class DolevAlgorithm(DistributedAlgorithm):
         Returns:
             bool: True if there are exactly f + 1 vertex-disjoint paths, False otherwise.
         """    
-        print(f"[Node {self.node_id}] check disjoint: {pathsets}")
+        print(f"[Node {self.node_id}] check disjoint: {pathsets}", file=self.out_dolev)
         nodes_in_paths = set()
         for path in pathsets:
             nodes_in_paths.update(path)
@@ -167,11 +171,15 @@ class DolevAlgorithm(DistributedAlgorithm):
         
         # Connect source to the start of paths
         for path in pathsets:
+            if len(path) == 0:
+                continue
             if path[0] != source:  # Ensure no duplicate edges
                 flow_network.add_edge(source, path[0], capacity=1)
 
         # Connect end of paths to the sink
         for path in pathsets:
+            if len(path) == 0:
+                continue
             if path[-1] != sink:  # Ensure no duplicate edges
                 flow_network.add_edge(path[-1], sink, capacity=1)
         
@@ -233,7 +241,7 @@ class DolevAlgorithm(DistributedAlgorithm):
     
     def criteria(self, bit_paths: set) -> bool:
         # check if exists exactly f + 1 vertex disjoint paths
-        print(f"[Node {self.node_id}] check disjoint: {self.formatPaths(bit_paths)}")
+        print(f"[Node {self.node_id}] check disjoint: {self.formatPaths(bit_paths)}", file=self.out_dolev)
         if(len(bit_paths) < self.f +1):
             return False
         bit_paths = list(bit_paths)
@@ -242,7 +250,7 @@ class DolevAlgorithm(DistributedAlgorithm):
     
     def ignore_msg(self, payload):
         # byzantine: ignore msg, do nothing
-        print(f"[Node {self.node_id}] ignores {payload.message_id} : {payload.message}")
+        print(f"[Node {self.node_id}] ignores {payload.message_id} : {payload.message}", file=self.out_dolev)
         return False 
     
     async def modify_msg_id(self, payload):
@@ -252,13 +260,13 @@ class DolevAlgorithm(DistributedAlgorithm):
         self.byzantined_msg_id.append(payload.message_id)
         pj = payload.source_id
         payload.source_id = self.get_modify_source_id(pj, self.node_id)
-        print(f"[Node {self.node_id}] modify {payload.message_id}'s source_id from {pj} to {payload.source_id}")
+        print(f"[Node {self.node_id}] modify {payload.message_id}'s source_id from {pj} to {payload.source_id}", file=self.out_dolev)
         payload.message_id = f"{payload.source_id}" + ":" + payload.message_id.split(":")[1]
-        print(f"[Node {payload.source_id}] modify message id to {payload.message_id}")
+        print(f"[Node {payload.source_id}] modify message id to {payload.message_id}", file=self.out_dolev)
         
         for neighbor in self.get_peers():
             neighbor_id = self.node_id_from_peer(peer=neighbor)
-            print(f"[Node {self.node_id}] send fake msg {payload.message_id} to {neighbor_id}")
+            print(f"[Node {self.node_id}] send fake msg {payload.message_id} to {neighbor_id}", file=self.out_dolev)
             await self.send_with_delay(neighbor, "", DolevMessage(payload.source_id, self.node_id, payload.message, payload.message_id, payload.path))
             self.logger.sent_msg(payload.message_id)
         return False
@@ -271,6 +279,9 @@ class DolevAlgorithm(DistributedAlgorithm):
                 source_id += 1
             if(source_id != node_id):
                 return source_id
+
+    async def dolev_deliver(self, payload):
+        return
 
     # upon event ⟨al, Deliver | pj , [m, path]⟩
     @message_wrapper(DolevMessage)
@@ -314,22 +325,22 @@ class DolevAlgorithm(DistributedAlgorithm):
             self.delivered_neighbors[m_id] = 0
         print(f"[Node {receiver_id}:{seq_id}] Got a message {m} source of {source_id} with sender {sender_id}.\t" + 
                 f"msg_id: {m_id}, msg path: {received_path} " +
-                                 f"and local paths: {self.paths[m_id]}")
+                                 f"and local paths: {self.paths[m_id]}", file=self.out_dolev)
         self.logger.recv_msg(m_id)
         
         # if got msg with self as source, ignore msg
         if(source_id == receiver_id):
-            print(f"[Node {receiver_id}:{seq_id}] received a msg claim that was sent by node it self")
+            print(f"[Node {receiver_id}:{seq_id}] received a msg claim that was sent by node it self", file=self.out_dolev)
             return
        
         # MD5 ignore msg if node already delivered the msg
         if(self.MD5 and self.delivered[m_id]):
-            print(f"[Node {receiver_id}:{seq_id}] received a msg of a delivered msg, no futher processing")
+            print(f"[Node {receiver_id}:{seq_id}] received a msg of a delivered msg, no futher processing", file=self.out_dolev)
             return
         
         # MD4 ignore msg with path that contain delivered neighbor
         if(self.MD4 and self.delivered_neighbors[m_id] & received_path_bitmask != 0):
-            print(f"[Node {receiver_id}:{seq_id}] received path contain neighbors that already delivered, no futher processing")
+            print(f"[Node {receiver_id}:{seq_id}] received path contain neighbors that already delivered, no futher processing", file=self.out_dolev)
             return
         
         # MD3 remove path from pathset that contain the sender how sent a empty path
@@ -338,7 +349,7 @@ class DolevAlgorithm(DistributedAlgorithm):
             self.delivered_neighbors[m_id] = self.delivered_neighbors[m_id] | sender_bitmask
             filtered_path = {path for path in self.paths[m_id] if (self.path_to_bitmask(path) & sender_bitmask == 0)}
             self.paths[m_id] = filtered_path
-            print(f"[Node {receiver_id}:{seq_id}] received msg with empty path, current delivered neighbors: {self.formatPath(self.delivered_neighbors[m_id])}")
+            print(f"[Node {receiver_id}:{seq_id}] received msg with empty path, current delivered neighbors: {self.formatPath(self.delivered_neighbors[m_id])}", file=self.out_dolev)
         
         try:
             # calculation of the path(received path + sender)
@@ -351,7 +362,8 @@ class DolevAlgorithm(DistributedAlgorithm):
                    
             # MD1 deliver the msg if source = sender
             if not self.is_byzantine and self.MD1 and (sender_id == source_id and not self.delivered[m_id]):
-                print(f"[Node {receiver_id}:{seq_id}] sender = source, Delivered Message: [{m_id}]:{m}")
+                await self.dolev_deliver(payload)
+                print(f"[Node {receiver_id}:{seq_id}] sender = source, Delivered Message: [{m_id}]:{m}", file=self.out_dolev)
                 self.logger.log_delivery(m_id, "Neighbor of Source")
                 self.delivered[m_id] = True
                 
@@ -363,8 +375,9 @@ class DolevAlgorithm(DistributedAlgorithm):
                 criteria, disjoint_path = self.has_exact_f_plus_one_vertex_disjoint_paths(self.paths[m_id],source_id, receiver_id)
                 if criteria:
                     # Delivered
-                    print(f"[Node {receiver_id}:{seq_id}] meet f+1 disjoint criteria, Delivered Message: [{m_id}]:{m}")
-                    print(disjoint_path)
+                    await self.dolev_deliver(payload)
+                    print(f"[Node {receiver_id}:{seq_id}] meet f+1 disjoint criteria, Delivered Message: [{m_id}]:{m}", file=self.out_dolev)
+                    print(disjoint_path, file=self.out_dolev)
                     self.logger.log_delivery(m_id, "F+1 disjoint found", disjoint_path)
                     self.delivered[m_id] = True
 
@@ -389,14 +402,14 @@ class DolevAlgorithm(DistributedAlgorithm):
                     continue
                 # MD2 if msg delivered, stop discard msg with not empty path to neighbors
                 if(self.delivered[m_id] and len(updated_path) != 0):
-                    print(f"[Node {receiver_id}:{seq_id}] msg {m_id} delivered, stop sending path {updated_path} to neighbors")
+                    print(f"[Node {receiver_id}:{seq_id}] msg {m_id} delivered, stop sending path {updated_path} to neighbors", file=self.out_dolev)
                     break
                 output = f"[Node {receiver_id}:{seq_id}] Send msg {m_id} with path {updated_path} to {neighbor_id}"
                 await self.send_with_delay(neighbor, output, DolevMessage(source_id, receiver_id, m, m_id, updated_path))
                 self.logger.sent_msg(m_id)
 
         except Exception as e:
-            print(f"[Node {receiver_id}:{seq_id}] Error in al_deliver: {e}")
+            print(f"[Node {receiver_id}:{seq_id}] Error in al_deliver: {e}", file=self.out_dolev)
             raise e
 
         self.logger.write_log_to_output()

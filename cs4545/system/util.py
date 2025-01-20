@@ -79,6 +79,21 @@ def report(num_nodes,num_msg,output_folder):
     print("\n")
     print(f"All good = [{all_node_delivered}], Total msg sent: {total_sent_msg_count}, Last Delivered Time: {max(delivered_times)}, AVG Time: {overal_avg_time}")
 
+
+@cli.command('compose_bracha')
+@click.argument('num_nodes', type=int)
+@click.argument('broadcaster_num', type=int)
+@click.argument('broadcast_num_per_node', type=int)
+@click.argument('byzantine_num', type=int)
+@click.argument('vertex_degree', type=int)
+@click.argument('byzantine_behaviour', type=str, default='IGNORE_MSG')
+@click.argument('topology_file', type=str, default='topologies/bracha.yaml')
+@click.option('--template_file', type=str, default='docker-compose.template.yml')
+def compose_bracha(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num,\
+                        vertex_degree, byzantine_behaviour, topology_file, template_file):
+    prepare_compose_bracha_file(num_nodes, broadcaster_num, broadcast_num_per_node, byzantine_num,\
+                               vertex_degree, byzantine_behaviour, topology_file, template_file)
+
 @cli.command('compose_dolev')
 @click.argument('num_nodes', type=int)
 @click.argument('broadcaster_num', type=int)
@@ -132,6 +147,65 @@ def generate_connected_graph(num_nodes, vertex_degree):
                     return connections
                 else:
                     print(f"Graph connectivity {connectivity} is less than required {k}, regenerating...")
+
+def prepare_compose_bracha_file(num_nodes, \
+                               broadcaster_num, broadcast_num_per_node, \
+                                byzantine_num, \
+                                vertex_degree, \
+                                byzantine_behaviour, \
+                                topology_file, template_file):
+    with open(template_file, 'r') as f:
+        content = yaml.safe_load(f)
+
+        node = content['services']['node0']
+        content['x-common-variables']['TOPOLOGY'] = topology_file
+
+        nodes = {}
+        baseport = 9090
+
+        network_name = list(content['networks'].keys())[0]
+        subnet = content['networks'][network_name]['ipam']['config'][0]['subnet'].split('/')[0]
+        network_base = '.'.join(subnet.split('/')[0].split('.')[:-1])
+
+        rem_broadcaster_num = broadcaster_num
+        rem_byzantine_num = byzantine_num
+
+
+        # Create a f + 1 vertex degree topology
+        for i in range(num_nodes):
+            n = copy.deepcopy(node)
+            n['ports'] = [f'{baseport + i}:{baseport + i}']
+            n['networks'][network_name]['ipv4_address'] = f'{network_base}.{10 + i}'
+            n['environment']['PID'] = i
+            flag_broadcaster = random.randint(1, num_nodes - i) <= rem_broadcaster_num
+            if flag_broadcaster: rem_broadcaster_num -= 1
+            n['environment']['IS_BROADCASTER'] = flag_broadcaster
+            n['environment']['BROADCAST_NUM'] = broadcast_num_per_node
+
+            flag_byzantine = random.randint(1, num_nodes - i) <= rem_byzantine_num and not flag_broadcaster
+            if flag_byzantine: rem_byzantine_num -= 1
+            n['environment']['IS_BYZANTINE'] = flag_byzantine
+            n['environment']['BYZANTINE_NUM'] = byzantine_num
+            n['environment']['NODES_NUM'] = num_nodes
+            n['environment']['BYZANTINE_BEHAVIOUR'] = byzantine_behaviour
+
+            n['environment']['TOPOLOGY'] = topology_file
+            n['environment']['ALGORITHM'] = "bracha"
+            n['environment']['LOCATION'] = "cs4545"
+            nodes[f'node{i}'] = n
+
+        connections = generate_connected_graph(num_nodes, vertex_degree)
+
+        content['services'] = nodes
+
+        with open('docker-compose.yml', 'w') as f2:
+            yaml.safe_dump(content, f2)
+            print(f'Output written to docker-compose.yml')
+
+        with open(topology_file, 'w') as f3:
+            yaml.safe_dump(connections, f3)
+            print(f'Output written to {topology_file}')
+
 
 def prepare_compose_dolev_file(num_nodes, \
                                broadcaster_num, broadcast_num_per_node, \
