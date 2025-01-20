@@ -86,6 +86,8 @@ class DistributedAlgorithm(Community):
             nodes_num: int = 10,
             is_byzantine: bool = False,
             byzantine_behaviour: str = "ignore_msg",
+            is_brb_byzantine: bool = False,
+            brb_byzantine_num: int = 0,
             MD1: bool = False,
             MD2: bool = False,
             MD3: bool = False,
@@ -103,7 +105,9 @@ class DistributedAlgorithm(Community):
         self.starting_nodes = starting_nodes
         self.broadcast_num = broadcast_num
         self.is_byzantine = is_byzantine
+        self.is_brb_byzantine = is_brb_byzantine
         self.f = byzantine_num
+        self.brb_f = brb_byzantine_num
         self.N = nodes_num
         self.byzantine_behaviour = byzantine_behaviour
         self.algortihm_output_file = Path(output_file)

@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("is_brb_byzantine", type=str, default="false")
     parser.add_argument("brb_byzatine_num", help="aka f", type=int, default=0)
     parser.add_argument("topology", type=str, nargs="?", default="topologies/default.yaml")
-    parser.add_argument("algorithm", type=str, nargs="?", default='echo')
+    parser.add_argument("algorithm", type=str, nargs="?", default='causal')
     parser.add_argument("-location", type=str, default='cs4545')
     parser.add_argument("-docker", action='store_true')
     parser.add_argument("-MD1", action='store_true')
